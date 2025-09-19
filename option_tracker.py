@@ -63,7 +63,7 @@ def get_call_option_table(expiry): #returns a df of the call table with delta an
     df["gamma"] = gamma
     return df
 
-#call_table = get_call_option_table()
+call_table = get_call_option_table("2026-01-16")
 
 
 
@@ -143,4 +143,57 @@ def predict_combination(strike, last_price, num_shares, num_calls): #manually in
             plt.ylabel("position value")
             plt.show()
 
-predict_combination(12, 1.42, 200, 1)
+#predict_combination(12, 1.42, 200, 1)
+
+
+
+def find_best_strike(df, price_target): #returns a strike that maximizes return, or plot the thing
+    d = {"strike":[], "return":[]}
+    for index, row in df.iterrows():
+         strike = row["strike"]
+         price = row["lastPrice"]
+         iv = row["impliedVolatility"]
+         final_price = bs_call_price(price_target, strike, time/2, r, iv)
+         d["strike"].append(strike)
+         d["return"].append(final_price/price-1)
+    df2 = pd.DataFrame(d)
+    df2.plot(x="strike", y="return", kind="line")
+    plt.xlabel("Strike Price")
+    plt.ylabel("Expected Return (with uncertainty)")
+    plt.show()
+
+#find_best_strike(call_table, 25)
+
+
+
+def find_best_strike2(df, price_target, std):
+    d = {"strike":[], "return":[]}
+    # grid of possible future prices around the target
+    price_grid = np.linspace(price_target - 3*std, price_target + 3*std, 50)
+    weights = norm.pdf(price_grid, loc=price_target, scale=std)
+    weights /= weights.sum()  # normalize to sum=1
+    
+    for index, row in df.iterrows():
+        strike = row["strike"]
+        premium = row["lastPrice"]
+        iv = row["impliedVolatility"]
+
+        # Expected option price = weighted avg across distribution
+        exp_price = 0
+        for S, w in zip(price_grid, weights):
+            call_val = bs_call_price(S, strike, time/2, r, iv)
+            exp_price += w * call_val
+
+        # Expected return relative to premium paid
+        exp_return = exp_price / premium - 1
+
+        d["strike"].append(strike)
+        d["return"].append(exp_return)
+
+    df2 = pd.DataFrame(d)
+    df2.plot(x="strike", y="return", kind="line")
+    plt.xlabel("Strike Price")
+    plt.ylabel("Expected Return (with uncertainty)")
+    plt.show()
+
+find_best_strike2(call_table, 20, 5)
