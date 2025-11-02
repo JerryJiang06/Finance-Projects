@@ -5,9 +5,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 
+import sqlite3
+import os
 
 
-def backfill_leveraged(df: pd.DataFrame, base_col: str, lev_col: str, leverage: int):
+
+def backfill_leveraged(df: pd.DataFrame, base_col: str, lev_col: str, leverage: int): #UPRO and SSO don't have dividends
     df = df.copy()
     base_returns = df[base_col].pct_change()
     lev_returns = leverage * base_returns
@@ -17,22 +20,33 @@ def backfill_leveraged(df: pd.DataFrame, base_col: str, lev_col: str, leverage: 
         raise ValueError("No valid data in leveraged ETF column to anchor reconstruction.")
 
     anchor_price = df.loc[first_valid, lev_col]
-
     # Rebuild synthetic price series
     synthetic_prices = (1 + lev_returns).cumprod() * anchor_price / ((1 + lev_returns.loc[:first_valid]).cumprod().iloc[-1])
-
     # Fill in missing values with synthetic
     df[lev_col] = df[lev_col].combine_first(synthetic_prices)
-
     return df
 
 
 
+db_path = "etf_data.db"        # SQLite database file
+table_name = "etf_prices"      # Table name in database
 etfs = ["SPY", "SSO", "UPRO", "^VIX"]
-#data: pd.DataFrame = yf.download(etfs, start="2006-06-21")["Close"] #2009-06-25 2006-06-21
-data = pd.read_csv("etf_06_06_21.csv", index_col=0, parse_dates = True)
+start_date = "2006-06-21"
+
+#data = yf.download(etfs, start=start_date, auto_adjust=True)["Close"] #auto_adjust factors in dividends reinvested for SPY
+#data.columns = [c.replace("^", "") for c in data.columns]  # clean "^VIX" -> "VIX"
+#print(data.head())
+
+conn = sqlite3.connect(db_path) #connect to sqlite
+#data.to_sql(table_name, conn, if_exists="replace") #saves data into database
+
+query = f"SELECT * FROM {table_name};"
+data = pd.read_sql_query(query, conn, parse_dates=["Date"])
+data = data.set_index("Date")
 #data = backfill_leveraged(data, "SPY", "UPRO", 3)
-#data.to_csv("etf_06_06_21.csv")
+#data.to_sql(table_name, conn, if_exists="replace") #saves data into database
+#print(data.head())
+conn.close()
 
 
 
@@ -78,7 +92,7 @@ def dip_backtest_etf(prices, drawdown_threshold, vix_threshold, hold_days=[21, 6
     for i in range(len(prices)):
         if ATH(data["SPY"], i): #resets drawdown threshold
             drawdown_threshold = d
-        if drawdowns.iloc[i] <= drawdown_threshold and data["^VIX"].iloc[i]>vix_threshold:
+        if drawdowns.iloc[i] <= drawdown_threshold and data["VIX"].iloc[i]>vix_threshold:
             drawdown_threshold = drawdowns.iloc[i] * 1.1 #update threshold to current drawdown
             fwd_ret = []
             for n in hold_days:
@@ -108,7 +122,7 @@ def dip_backtest_leap(leverage, drawdown_threshold, vix_threshold, hold_days=[21
     for i in range(len(data["SPY"])): #SPY price history
         if ATH(data["SPY"], i): #resets drawdown threshold
             drawdown_threshold = d
-        if drawdowns.iloc[i] <= drawdown_threshold and data["^VIX"].iloc[i]>vix_threshold:
+        if drawdowns.iloc[i] <= drawdown_threshold and data["VIX"].iloc[i]>vix_threshold:
             drawdown_threshold = drawdowns.iloc[i] * 1.1 #update threshold to current drawdown
             fwd_ret = []
             for n in hold_days:
@@ -182,5 +196,3 @@ def plot_returns(dfs): #plot bar graphs showing return distribution for each met
     plt.show()
 
 plot_returns(dfs)
-
-
