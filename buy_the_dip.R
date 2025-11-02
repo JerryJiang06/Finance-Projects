@@ -1,3 +1,5 @@
+#this project calculates the returns of a golden/death cross strategy for the SPY ETF
+
 library(DBI)
 library(RSQLite)
 library(dplyr)
@@ -162,5 +164,6 @@ p2 <- ggplot(df, aes(x = Date, y = Close)) +
   labs(title = "Buy (Green) and Sell (Red) Signals", y = "SPY Price", x = "Date") +
   theme_minimal()
 #print(p2)
+
 
 dbDisconnect(con)
